@@ -320,6 +320,93 @@ export function generateEntityTextures(textures: Phaser.Textures.TextureManager)
   createCanvasTexture(textures, TEXTURES.antibiotics.gramNegative, 56, 56, drawAntibioticGramNegative);
   createCanvasTexture(textures, TEXTURES.cookie, 48, 50, (ctx, w) => drawCookie(ctx, w));
   createCanvasTexture(textures, TEXTURES.present, 40, 40, drawPresent);
+  createCanvasTexture(textures, TEXTURES.hazards.virusTorpedo, 112, 52, (ctx, w, h) => {
+    const cy = h / 2;
+    // Exhaust trail (right side, since the capsule flies left).
+    const trail = ctx.createLinearGradient(w - 26, 0, w, 0);
+    trail.addColorStop(0, 'rgba(156,255,46,0.85)');
+    trail.addColorStop(1, 'rgba(156,255,46,0)');
+    ctx.fillStyle = trail;
+    ctx.fillRect(w - 26, cy - 7, 26, 14);
+    // Tail fins in Grumpus purple.
+    ctx.beginPath();
+    ctx.moveTo(w - 34, cy - 10);
+    ctx.lineTo(w - 18, 2);
+    ctx.lineTo(w - 22, cy - 6);
+    ctx.moveTo(w - 34, cy + 10);
+    ctx.lineTo(w - 18, h - 2);
+    ctx.lineTo(w - 22, cy + 6);
+    ctx.fillStyle = '#7b3fe4';
+    ctx.fill();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Capsule body with a pointed nose to the left.
+    glow(ctx, 'rgba(255, 59, 47, 0.8)', 10);
+    ctx.beginPath();
+    ctx.moveTo(4, cy);
+    ctx.quadraticCurveTo(14, 8, 30, 8);
+    ctx.lineTo(w - 26, 8);
+    ctx.quadraticCurveTo(w - 18, cy, w - 26, h - 8);
+    ctx.lineTo(30, h - 8);
+    ctx.quadraticCurveTo(14, h - 8, 4, cy);
+    ctx.closePath();
+    ctx.fillStyle = '#3d8a2c';
+    ctx.fill();
+    noGlow(ctx);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = OUTLINE;
+    ctx.stroke();
+    // Transparent chamber holding virus particles.
+    roundRectPath(ctx, 32, 13, 44, h - 26, 8);
+    ctx.fillStyle = 'rgba(210, 245, 255, 0.55)';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#e8fbff';
+    ctx.stroke();
+    for (const [vx, vy, r] of [
+      [44, cy - 3, 5],
+      [58, cy + 3, 6],
+      [69, cy - 4, 4],
+    ] as const) {
+      starPath(ctx, vx, vy, 8, r + 2.5, r);
+      ctx.fillStyle = '#c24bff';
+      ctx.fill();
+      fillCircle(ctx, vx, vy, r * 0.45, '#ffe14a');
+    }
+    // Warning light on the nose and hazard stripe.
+    fillCircle(ctx, 18, cy, 4.5, '#ff3b2f', OUTLINE, 1.5);
+    fillCircle(ctx, 17, cy - 1.5, 1.5, '#ffffff');
+    ctx.fillStyle = '#ffc94a';
+    ctx.fillRect(80, 10, 4, h - 20);
+  });
+  // Lab walkway: bright top edge, dark steel body and hazard stripes so it stands out from the benches.
+  createCanvasTexture(textures, TEXTURES.environment.platform, 256, 16, (ctx, w, h) => {
+    ctx.fillStyle = '#1b2638';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#fff1a8';
+    ctx.fillRect(0, 0, w, 3);
+    ctx.fillStyle = '#ffc94a';
+    ctx.fillRect(0, 3, w, 2);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 7, w, h - 9);
+    ctx.clip();
+    ctx.fillStyle = '#ffc94a';
+    for (let x = -h; x < w + h; x += 16) {
+      ctx.beginPath();
+      ctx.moveTo(x, h);
+      ctx.lineTo(x + 8, h);
+      ctx.lineTo(x + 8 + h, 0);
+      ctx.lineTo(x + h, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+    ctx.strokeStyle = '#05090f';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, w - 2, h - 2);
+  });
 
   createCanvasTexture(textures, TEXTURES.particles.dot, 10, 10, (ctx) => fillCircle(ctx, 5, 5, 5, '#ffffff'));
   createCanvasTexture(textures, TEXTURES.particles.star, 18, 18, (ctx) => {

@@ -1,9 +1,10 @@
 import type Phaser from 'phaser';
-import { DEPTH, GAME_HEIGHT, GAME_WIDTH } from '../config/layout';
+import { DEPTH, GAME_HEIGHT, GAME_WIDTH, LAYOUT } from '../config/layout';
 import { COLORS, CSS_COLORS } from '../config/theme';
 import type { Bacterium } from '../entities/Bacterium';
 import { TEXTURES } from '../graphics/textureKeys';
 import { REQUIRED_ACTION } from '../logic/SpawnPlanner';
+import type { PlatformLevel } from '../types/game';
 import { displayText } from '../ui/textStyles';
 
 interface Indicator {
@@ -29,14 +30,30 @@ export class MdrWarnings {
     }
   }
 
-  update(bacteria: readonly Bacterium[], timeMs: number, reducedMotion: boolean): void {
-    const incoming = bacteria.filter((b) => b.bacteriumType === 'mdr' && !b.resolved && b.x > GAME_WIDTH - 30);
+  update(
+    bacteria: readonly Bacterium[],
+    worldSpeed: number,
+    warningSeconds: number,
+    timeMs: number,
+    reducedMotion: boolean,
+    playerLevel: PlatformLevel = 0,
+  ): void {
+    const warningEdgeX = LAYOUT.playerX + worldSpeed * warningSeconds;
+    const incoming = bacteria.filter(
+      (b) => b.bacteriumType === 'mdr' && !b.resolved && b.x > LAYOUT.playerX && b.x <= warningEdgeX,
+    );
     const blink = reducedMotion ? 1 : 0.55 + 0.45 * Math.abs(Math.sin(timeMs / 120));
 
     this.edgeGlow.setVisible(incoming.length > 0).setAlpha(reducedMotion ? 0.6 : blink);
     incoming.forEach((bacterium, index) => {
       const indicator = this.indicators[index] ?? this.createIndicator();
-      indicator.label.setText(ACTION_LABEL[REQUIRED_ACTION[bacterium.lane]]);
+      // The lane action only applies on the MDR's own level; from another level the advice is to stay put.
+      const action = bacterium.platformLevel === playerLevel
+        ? ACTION_LABEL[REQUIRED_ACTION[bacterium.lane]]
+        : bacterium.platformLevel > playerLevel
+          ? 'STAY LOW!'
+          : 'STAY UP!';
+      indicator.label.setText(action);
       indicator.container.setVisible(true).setPosition(GAME_WIDTH - 54, bacterium.y).setAlpha(blink);
     });
     for (let index = incoming.length; index < this.indicators.length; index += 1) {

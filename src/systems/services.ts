@@ -6,7 +6,7 @@ import type { SettingsStore } from './SettingsStore';
 
 /** Long-lived services shared by all scenes. Stored in the game registry, not in globals. */
 export interface GameServices {
-  readonly balance: BalanceConfig;
+  readonly getBalance: () => BalanceConfig;
   readonly save: SaveService;
   readonly settings: SettingsStore;
   readonly audio: AudioManager;

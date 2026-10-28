@@ -20,12 +20,19 @@ export class Collectable extends Phaser.Physics.Arcade.Sprite {
     super(scene, x, y, TEXTURES.cookie);
   }
 
-  launch(kind: CollectableKind, lane: CollectableLane, x: number, antibiotic: AntibioticType | null, phase: number): void {
+  launch(
+    kind: CollectableKind,
+    lane: CollectableLane,
+    x: number,
+    antibiotic: AntibioticType | null,
+    phase: number,
+    raisePixels = 0,
+  ): void {
     this.kind = kind;
     this.antibiotic = antibiotic;
     this.collected = false;
     this.hintShown = false;
-    this.baseY = COLLECTABLE_LANE_Y[lane];
+    this.baseY = COLLECTABLE_LANE_Y[lane] - raisePixels;
     this.ageSeconds = 0;
     this.phase = phase;
 

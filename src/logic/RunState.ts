@@ -1,7 +1,7 @@
 import type { BalanceConfig } from '../config/balance';
 import type { AntibioticType, BacteriumType, DefeatCause } from '../types/game';
 import { AntibioticInventory, type RestockResult } from './AntibioticInventory';
-import { resolveBacteriumContact, type ContactOutcome } from './collisionRules';
+import { resolveBacteriumContact, resolveTorpedoContact, type ContactOutcome } from './collisionRules';
 import { calculateScore, countCheckpointsCrossed } from './scoring';
 
 export interface AdvanceResult {
@@ -15,6 +15,7 @@ export class RunState {
   private distance = 0;
   private cookieCount = 0;
   private presentCount = 0;
+  private collisionPenalty = 0;
   private defeat: DefeatCause | null = null;
 
   constructor(private readonly balance: BalanceConfig) {
@@ -42,10 +43,10 @@ export class RunState {
   }
 
   get score(): number {
-    return calculateScore(
+    return Math.max(0, calculateScore(
       { distanceMeters: this.distance, cookies: this.cookieCount, presents: this.presentCount },
       this.balance,
-    );
+    ) - this.collisionPenalty);
   }
 
   advance(meters: number): AdvanceResult {
@@ -70,7 +71,18 @@ export class RunState {
   resolveContact(bacterium: BacteriumType, isInvulnerable: boolean): ContactOutcome {
     if (this.isOver) return { kind: 'ignored' };
     const outcome = resolveBacteriumContact(bacterium, this.inventory, isInvulnerable);
-    if (outcome.kind === 'defeated') this.defeat = outcome.cause;
+    if (outcome.kind === 'defeated') {
+      this.defeat = outcome.cause;
+    } else if (outcome.kind === 'protected') {
+      this.collisionPenalty += this.balance.collision.protectedCollisionPenalty;
+    }
+    return outcome;
+  }
+
+  resolveTorpedoContact(): ContactOutcome {
+    if (this.isOver) return { kind: 'ignored' };
+    const outcome = resolveTorpedoContact();
+    this.defeat = outcome.kind === 'defeated' ? outcome.cause : this.defeat;
     return outcome;
   }
 
@@ -78,6 +90,7 @@ export class RunState {
     this.distance = 0;
     this.cookieCount = 0;
     this.presentCount = 0;
+    this.collisionPenalty = 0;
     this.defeat = null;
     this.inventory.reset();
   }

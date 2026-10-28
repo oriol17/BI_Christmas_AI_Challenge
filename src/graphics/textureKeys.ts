@@ -11,6 +11,7 @@ export const TEXTURES = {
     jump: 'santa-jump',
     fall: 'santa-fall',
     crouch: 'santa-crouch',
+    fastFall: 'santa-fast-fall',
     hit: 'santa-hit',
     defeat: 'santa-defeat',
   },
@@ -41,6 +42,10 @@ export const TEXTURES = {
     deliveryStation: 'env-delivery-station',
     building: 'env-lab-building',
     moon: 'env-moon',
+    platform: 'env-lab-platform',
+  },
+  hazards: {
+    virusTorpedo: 'hazard-virus-torpedo',
   },
   particles: {
     dot: 'particle-dot',

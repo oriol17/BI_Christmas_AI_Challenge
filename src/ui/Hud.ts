@@ -86,7 +86,7 @@ export class Hud {
     // Controls hint and sound toggle
     root.add(
       scene.add
-        .text(GAME_WIDTH - 64, GAME_HEIGHT - 24, 'SPACE/↑ jump · ↓ crouch · ESC pause · M mute', bodyText(15, CSS_COLORS.cyanSoft))
+        .text(GAME_WIDTH - 64, GAME_HEIGHT - 24, 'SPACE/↑ jump · ↓ crouch / air-tuck · H hints · ESC pause · M mute', bodyText(14, CSS_COLORS.cyanSoft))
         .setOrigin(1, 0.5)
         .setAlpha(0.85),
     );

@@ -17,14 +17,18 @@ export const ANTIBIOTIC_TYPES: readonly AntibioticType[] = ['gramPositive', 'gra
  */
 export type HazardLane = 'ground' | 'high' | 'sky';
 
-/** Collectables either sit on the floor (run through) or float at jump height. */
-export type CollectableLane = 'run' | 'jump';
+/** Collectables can be taken from the running, jump-arc, or crouch paths. */
+export type CollectableLane = 'run' | 'jump' | 'crouch';
 
 /** Visual movement style. All trajectories settle into their lane well before reaching Santa. */
 export type Trajectory = 'straight' | 'bob' | 'lob';
 
 export type RequiredAction = 'jump' | 'crouch' | 'stay';
 
-export type DefeatCause = BacteriumType;
+export type PlatformLevel = 0 | 1 | 2;
+
+export type TorpedoLane = 'low' | 'mid' | 'high';
+
+export type DefeatCause = BacteriumType | 'virusTorpedo';
 
 export type AntibioticCounts = Record<AntibioticType, number>;

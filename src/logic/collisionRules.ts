@@ -33,6 +33,10 @@ export function resolveBacteriumContact(
   return { kind: 'defeated', cause: bacterium };
 }
 
+export function resolveTorpedoContact(): ContactOutcome {
+  return { kind: 'defeated', cause: 'virusTorpedo' };
+}
+
 export interface DefeatMessage {
   readonly title: string;
   readonly description: string;
@@ -50,5 +54,9 @@ export const DEFEAT_MESSAGES: Readonly<Record<DefeatCause, DefeatMessage>> = {
   mdr: {
     title: 'Multidrug-resistant superbug!',
     description: 'No effective antibiotic was available. MDR bacteria must be avoided.',
+  },
+  virusTorpedo: {
+    title: 'Virus torpedo impact!',
+    description: 'Antibiotics do not work against viruses. This threat had to be avoided.',
   },
 };

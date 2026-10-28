@@ -10,8 +10,11 @@ export type SoundKey =
   | 'antibiotic-pickup'
   | 'already-stocked'
   | 'protected'
+  | 'stumble'
   | 'delivery'
   | 'mdr-warning'
+  | 'torpedo-warning'
+  | 'torpedo-impact'
   | 'grumpus-throw'
   | 'defeat'
   | 'ui-move'
@@ -48,6 +51,10 @@ export const SOUND_RECIPES: Readonly<Record<SoundKey, readonly ToneStep[]>> = {
     { frequency: 1046, endFrequency: 523, type: 'triangle', delay: 0, duration: 0.25, volume: 0.22 },
     { frequency: 220, endFrequency: 110, type: 'square', delay: 0, duration: 0.15, volume: 0.08 },
   ],
+  stumble: [
+    { frequency: 180, endFrequency: 75, type: 'sawtooth', delay: 0, duration: 0.18, volume: 0.2 },
+    { frequency: 260, endFrequency: 120, type: 'square', delay: 0.04, duration: 0.14, volume: 0.13 },
+  ],
   delivery: [
     { frequency: 784, type: 'triangle', delay: 0, duration: 0.12, volume: 0.18 },
     { frequency: 988, type: 'triangle', delay: 0.1, duration: 0.12, volume: 0.18 },
@@ -58,6 +65,14 @@ export const SOUND_RECIPES: Readonly<Record<SoundKey, readonly ToneStep[]>> = {
     { frequency: 660, endFrequency: 440, type: 'sawtooth', delay: 0, duration: 0.25, volume: 0.09 },
     { frequency: 660, endFrequency: 440, type: 'sawtooth', delay: 0.3, duration: 0.25, volume: 0.09 },
     { frequency: 660, endFrequency: 440, type: 'sawtooth', delay: 0.6, duration: 0.25, volume: 0.09 },
+  ],
+  'torpedo-warning': [
+    { frequency: 880, endFrequency: 560, type: 'sawtooth', delay: 0, duration: 0.18, volume: 0.13 },
+    { frequency: 880, endFrequency: 560, type: 'sawtooth', delay: 0.22, duration: 0.18, volume: 0.13 },
+  ],
+  'torpedo-impact': [
+    { frequency: 180, endFrequency: 70, type: 'sawtooth', delay: 0, duration: 0.32, volume: 0.22 },
+    { frequency: 130, endFrequency: 55, type: 'square', delay: 0.04, duration: 0.25, volume: 0.15 },
   ],
   'grumpus-throw': [{ frequency: 500, endFrequency: 200, type: 'sine', delay: 0, duration: 0.18, volume: 0.07 }],
   defeat: [

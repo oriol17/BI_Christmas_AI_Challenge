@@ -2,11 +2,14 @@ import type Phaser from 'phaser';
 import type { BalanceConfig } from '../config/balance';
 import { DEPTH, PLAYER_BODY, PLAYER_FRAME } from '../config/layout';
 import { ANIMATIONS, TEXTURES } from '../graphics/textureKeys';
+import { clampFallVelocity, getFastFallAcceleration } from '../logic/fastFall';
+import type { PlatformLevel } from '../types/game';
 
 export interface PlayerIntent {
   readonly jumpPressed: boolean;
   readonly jumpHeld: boolean;
   readonly crouchHeld: boolean;
+  readonly hintsTogglePressed?: boolean;
 }
 
 export interface PlayerStepEvents {
@@ -24,19 +27,25 @@ export class Player {
   readonly sprite: Phaser.Physics.Arcade.Sprite;
   private readonly body: Phaser.Physics.Arcade.Body;
   private readonly shield: Phaser.GameObjects.Image;
+  private readonly fastFallTrail: Phaser.GameObjects.Image;
   private crouchRemainingMs = 0;
+  private crouchHeldMs = 0;
+  private crouchCooldownRemainingMs = 0;
   private coyoteRemainingMs = 0;
   private jumpBufferRemainingMs = 0;
   private invulnerableRemainingMs = 0;
   private crouching = false;
   private ascendingFromJump = false;
   private defeated = false;
+  private mustReleaseCrouch = false;
+  private fastFalling = false;
+  private platformLevel: PlatformLevel = 0;
   private elapsedMs = 0;
 
   constructor(
     private readonly scene: Phaser.Scene,
     x: number,
-    groundY: number,
+    private readonly groundY: number,
     private readonly balance: BalanceConfig,
   ) {
     this.sprite = scene.physics.add.sprite(x, groundY, TEXTURES.santa.run[0]);
@@ -44,10 +53,17 @@ export class Player {
     this.body = this.sprite.body as Phaser.Physics.Arcade.Body;
     this.body.setGravityY(balance.player.gravity);
     this.body.setCollideWorldBounds(true);
+    this.body.setMaxVelocity(0, balance.player.maximumFallSpeed);
     this.applyBody(PLAYER_BODY.standing);
     this.sprite.play(ANIMATIONS.santaRun);
 
     this.shield = scene.add.image(x, groundY - 52, TEXTURES.ui.shield).setDepth(DEPTH.player + 1).setVisible(false);
+    this.fastFallTrail = scene.add.image(x, groundY - 45, TEXTURES.particles.ring)
+      .setDepth(DEPTH.player - 1)
+      .setTint(0x8ff4ff)
+      .setScale(0.35, 0.8)
+      .setAlpha(0.55)
+      .setVisible(false);
   }
 
   get isGrounded(): boolean {
@@ -66,6 +82,18 @@ export class Player {
     return this.defeated;
   }
 
+  get isFastFalling(): boolean {
+    return this.fastFalling;
+  }
+
+  get currentPlatformLevel(): PlatformLevel {
+    return this.platformLevel;
+  }
+
+  markPlatformLevel(level: PlatformLevel): void {
+    this.platformLevel = level;
+  }
+
   update(deltaMs: number, intent: PlayerIntent): PlayerStepEvents {
     this.elapsedMs += deltaMs;
     this.updateInvulnerability(deltaMs);
@@ -76,8 +104,11 @@ export class Player {
 
     const { player } = this.balance;
     const grounded = this.isGrounded;
+    if (grounded && this.body.bottom >= this.groundY - 2) this.platformLevel = 0;
     let jumped = false;
     let crouchStarted = false;
+    this.crouchCooldownRemainingMs = Math.max(0, this.crouchCooldownRemainingMs - deltaMs);
+    if (!intent.crouchHeld) this.mustReleaseCrouch = false;
 
     this.coyoteRemainingMs = grounded ? player.coyoteTimeMs : Math.max(0, this.coyoteRemainingMs - deltaMs);
     this.jumpBufferRemainingMs = intent.jumpPressed
@@ -85,28 +116,41 @@ export class Player {
       : Math.max(0, this.jumpBufferRemainingMs - deltaMs);
     if (grounded && this.body.velocity.y >= 0) this.ascendingFromJump = false;
 
-    // Crouching: a tap crouches for crouchDurationMs, holding keeps Santa down.
+    // Holding crouch is bounded so it stays an intentional action rather than a permanent safe state.
     if (intent.crouchHeld) {
       if (grounded) {
-        if (!this.crouching) {
+        if (!this.crouching && this.crouchCooldownRemainingMs <= 0 && !this.mustReleaseCrouch) {
           this.setCrouching(true);
           crouchStarted = true;
         }
-        this.crouchRemainingMs = player.crouchDurationMs;
-      } else if (this.body.velocity.y < player.fastFallVelocity) {
-        this.body.setVelocityY(player.fastFallVelocity);
+        if (this.crouching) {
+          this.crouchHeldMs += deltaMs;
+          this.crouchRemainingMs = player.crouchDurationMs;
+        }
+      } else {
         this.ascendingFromJump = false;
       }
     }
+    this.setFastFalling(
+      !grounded && intent.crouchHeld,
+      player.fastFallAcceleration,
+      player.fastFallVelocity,
+      player.maximumFallSpeed,
+    );
     if (this.crouching) {
-      this.crouchRemainingMs -= deltaMs;
-      if (this.crouchRemainingMs <= 0 && !intent.crouchHeld) this.setCrouching(false);
+      if (!intent.crouchHeld) this.crouchRemainingMs -= deltaMs;
+      if (this.crouchHeldMs >= player.maxCrouchHoldMs) {
+        this.mustReleaseCrouch = true;
+        this.endCrouch();
+      } else if (this.crouchRemainingMs <= 0 && !intent.crouchHeld) {
+        this.endCrouch();
+      }
     }
 
     // Jumping (with coyote time and input buffering). Jumping cancels a crouch.
     const canJump = this.coyoteRemainingMs > 0 || (player.allowAirJump && !grounded);
     if (this.jumpBufferRemainingMs > 0 && canJump) {
-      if (this.crouching) this.setCrouching(false);
+      if (this.crouching) this.endCrouch();
       this.body.setVelocityY(-player.jumpVelocity);
       this.coyoteRemainingMs = 0;
       this.jumpBufferRemainingMs = 0;
@@ -129,10 +173,20 @@ export class Player {
     this.scene.tweens.add({ targets: this.shield, scale: 1, duration: 180, ease: 'Back.easeOut' });
   }
 
-  /** Brief hit reaction used when an antibiotic absorbs a bacterium. */
-  flashProtected(): void {
-    this.sprite.setTintFill(0xbff8ff);
-    this.scene.time.delayedCall(90, () => this.sprite.clearTint());
+  /** Brief, non-blocking collision reaction; movement controls remain responsive. */
+  stumble(durationMs: number): void {
+    this.sprite.setTintFill(0xff675e);
+    this.scene.tweens.add({
+      targets: this.sprite,
+      angle: { from: -7, to: 5 },
+      duration: Math.max(80, durationMs / 2),
+      yoyo: true,
+      repeat: 1,
+      onComplete: () => {
+        this.sprite.setAngle(0);
+        if (!this.defeated) this.sprite.clearTint();
+      },
+    });
   }
 
   defeat(): void {
@@ -151,6 +205,7 @@ export class Player {
 
   destroy(): void {
     this.shield.destroy();
+    this.fastFallTrail.destroy();
     this.sprite.destroy();
   }
 
@@ -170,7 +225,38 @@ export class Player {
   private setCrouching(crouching: boolean): void {
     this.crouching = crouching;
     this.crouchRemainingMs = crouching ? this.balance.player.crouchDurationMs : 0;
+    this.crouchHeldMs = 0;
     this.applyBody(crouching ? PLAYER_BODY.crouching : PLAYER_BODY.standing);
+  }
+
+  private setFastFalling(
+    fastFalling: boolean,
+    acceleration: number,
+    targetVelocity: number,
+    maximumFallSpeed: number,
+  ): void {
+    if (this.fastFalling !== fastFalling) {
+      this.fastFalling = fastFalling;
+      // Landing from a fast-fall while Down is held must keep the crouch hitbox that just started.
+      this.applyBody(
+        fastFalling ? PLAYER_BODY.fastFalling : this.crouching ? PLAYER_BODY.crouching : PLAYER_BODY.standing,
+      );
+    }
+    this.body.setAccelerationY(
+      getFastFallAcceleration(fastFalling, true, this.body.velocity.y, targetVelocity, acceleration),
+    );
+    this.body.setVelocityY(clampFallVelocity(this.body.velocity.y, maximumFallSpeed));
+    this.fastFallTrail.setVisible(fastFalling);
+    if (fastFalling) {
+      this.fastFallTrail.setPosition(this.sprite.x, this.sprite.y - 38);
+      this.fastFallTrail.setAlpha(0.42 + Math.sin(this.elapsedMs / 45) * 0.12);
+    }
+  }
+
+  private endCrouch(): void {
+    if (!this.crouching) return;
+    this.setCrouching(false);
+    this.crouchCooldownRemainingMs = this.balance.player.crouchCooldownMs;
   }
 
   private applyBody(shape: BodyShape): void {
@@ -179,7 +265,9 @@ export class Player {
   }
 
   private updateVisual(grounded: boolean): void {
-    if (this.crouching) {
+    if (this.fastFalling) {
+      this.showStatic(TEXTURES.santa.fastFall);
+    } else if (this.crouching) {
       this.showStatic(TEXTURES.santa.crouch);
     } else if (!grounded) {
       this.showStatic(this.body.velocity.y < 0 ? TEXTURES.santa.jump : TEXTURES.santa.fall);

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../audio/AudioManager';
-import { DEFAULT_BALANCE } from '../config/balance';
+import { getBalanceForMode } from '../config/balance';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout';
 import { COLORS, CSS_COLORS } from '../config/theme';
 import { countManifestEntries, parseAssetManifest, type AssetManifest } from '../graphics/assetManifest';
@@ -64,7 +64,12 @@ export class BootScene extends Phaser.Scene {
     const save = SaveService.fromBrowser();
     const settings = new SettingsStore(save);
     const audio = new AudioManager(this.sound, this.cache.audio, settings);
-    registerServices(this.game, { balance: DEFAULT_BALANCE, save, settings, audio });
+    registerServices(this.game, {
+      getBalance: () => getBalanceForMode(settings.difficultyMode),
+      save,
+      settings,
+      audio,
+    });
     this.game.events.once(Phaser.Core.Events.DESTROY, () => audio.destroy());
 
     this.scene.start(SCENES.menu);

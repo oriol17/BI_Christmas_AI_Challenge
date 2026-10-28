@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BALANCE, type BalanceConfig } from '../src/config/balance';
-import { getDifficulty, getWorldSpeed } from '../src/logic/difficulty';
+import {
+  COMPETITION_BALANCE,
+  DEFAULT_BALANCE,
+  TRAINING_BALANCE,
+  type BalanceConfig,
+} from '../src/config/balance';
+import { getDifficulty, getMinimumReactionWindowSeconds, getWorldSpeed } from '../src/logic/difficulty';
 import { RunState } from '../src/logic/RunState';
 import { calculateScore, calculateScoreBreakdown, countCheckpointsCrossed, nextCheckpointDistance } from '../src/logic/scoring';
 
@@ -62,6 +67,18 @@ describe('RunState', () => {
     run.collectCookie();
     expect(run.cookies).toBe(2);
     expect(run.score).toBe(200);
+  });
+
+  it('deducts a configured score penalty when an antibiotic absorbs a collision', () => {
+    const run = new RunState(DEFAULT_BALANCE);
+    run.advance(200);
+    expect(run.resolveContact('gramPositive', false)).toEqual({
+      kind: 'protected',
+      antibiotic: 'gramPositive',
+    });
+    expect(run.score).toBe(200 - DEFAULT_BALANCE.collision.protectedCollisionPenalty);
+    run.reset();
+    expect(run.score).toBe(0);
   });
 
   it('records the defeat cause and freezes progress', () => {
@@ -135,5 +152,32 @@ describe('difficulty', () => {
       DEFAULT_BALANCE.spawning.initialSpawnIntervalSeconds,
     );
     expect(DEFAULT_BALANCE.spawning.firstHazardDelaySeconds).toBeLessThan(1.5);
+  });
+
+  it('uses Competition by default and keeps Training materially easier', () => {
+    expect(DEFAULT_BALANCE).toBe(COMPETITION_BALANCE);
+    expect(COMPETITION_BALANCE.world.initialWorldSpeed).toBeGreaterThan(TRAINING_BALANCE.world.initialWorldSpeed);
+    expect(getDifficulty(0, COMPETITION_BALANCE).spawnIntervalSeconds).toBeLessThan(
+      getDifficulty(0, TRAINING_BALANCE).spawnIntervalSeconds,
+    );
+    expect(COMPETITION_BALANCE.mdr.unlockDistance).toBeLessThan(TRAINING_BALANCE.mdr.unlockDistance);
+  });
+
+  it('reaches but never exceeds the configured Competition speed cap early', () => {
+    expect(getWorldSpeed(360, COMPETITION_BALANCE)).toBe(COMPETITION_BALANCE.world.maxWorldSpeed);
+    expect(getWorldSpeed(1_000_000, COMPETITION_BALANCE)).toBe(COMPETITION_BALANCE.world.maxWorldSpeed);
+  });
+
+  it('ramps MDR probability with difficulty while preserving a physics-based reaction floor', () => {
+    const first = getDifficulty(COMPETITION_BALANCE.mdr.unlockDistance, COMPETITION_BALANCE);
+    const later = getDifficulty(360, COMPETITION_BALANCE);
+    expect(later.mdrProbability).toBeGreaterThan(first.mdrProbability);
+    expect(later.mdrProbability).toBeLessThanOrEqual(COMPETITION_BALANCE.mdr.maxProbability);
+    expect(COMPETITION_BALANCE.spawning.minimumReactionWindowSeconds).toBeGreaterThanOrEqual(
+      getMinimumReactionWindowSeconds(COMPETITION_BALANCE),
+    );
+    expect(getDifficulty(360, COMPETITION_BALANCE).spawnIntervalSeconds).toBeGreaterThanOrEqual(
+      getMinimumReactionWindowSeconds(COMPETITION_BALANCE),
+    );
   });
 });

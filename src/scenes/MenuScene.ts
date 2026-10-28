@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { DEPTH, GAME_HEIGHT, GAME_WIDTH, LAYOUT } from '../config/layout';
 import { COLORS, CSS_COLORS } from '../config/theme';
+import type { DifficultyMode } from '../config/balance';
 import { ANIMATIONS, TEXTURES } from '../graphics/textureKeys';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { getServices } from '../systems/services';
@@ -65,20 +66,29 @@ export class MenuScene extends Phaser.Scene {
     const menu = new MenuList(
       this,
       GAME_WIDTH / 2,
-      290,
+      302,
       [
         { label: 'Start Game', onSelect: () => this.goTo(SCENES.intro) },
         { label: 'How to Play', onSelect: () => this.goTo(SCENES.howToPlay) },
-        { label: this.soundLabel(settings.muted), onSelect: () => menu.setLabel(2, this.soundLabel(audio.toggleMute())) },
+        {
+          label: this.difficultyLabel(settings.difficultyMode),
+          onSelect: () => {
+            const nextMode = settings.difficultyMode === 'competition' ? 'training' : 'competition';
+            settings.setDifficultyMode(nextMode);
+            menu.setLabel(2, this.difficultyLabel(nextMode));
+          },
+        },
+        { label: this.soundLabel(settings.muted), onSelect: () => menu.setLabel(3, this.soundLabel(audio.toggleMute())) },
         {
           label: this.motionLabel(settings.reducedMotion),
           onSelect: () => {
             settings.setReducedMotion(!settings.reducedMotion);
-            menu.setLabel(3, this.motionLabel(settings.reducedMotion));
+            menu.setLabel(4, this.motionLabel(settings.reducedMotion));
           },
         },
       ],
       audio,
+      { spacing: 49 },
     );
     menu.buttons.forEach((button) => button.setDepth(DEPTH.hud));
 
@@ -101,6 +111,10 @@ export class MenuScene extends Phaser.Scene {
 
   private soundLabel(muted: boolean): string {
     return `Sound: ${muted ? 'Off' : 'On'}`;
+  }
+
+  private difficultyLabel(mode: DifficultyMode): string {
+    return `Difficulty: ${mode === 'competition' ? 'Competition' : 'Training'}`;
   }
 
   private motionLabel(reduced: boolean): string {

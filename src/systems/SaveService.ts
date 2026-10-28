@@ -1,3 +1,5 @@
+import type { DifficultyMode } from '../config/balance';
+
 /** Minimal subset of the Web Storage API so the service can be tested with fakes. */
 export interface KeyValueStorage {
   getItem(key: string): string | null;
@@ -7,9 +9,17 @@ export interface KeyValueStorage {
 export interface PersistedSettings {
   readonly muted: boolean;
   readonly reducedMotion: boolean;
+  readonly difficultyMode: DifficultyMode;
+  /** First-time gameplay hints; repeat players can turn them off with H. */
+  readonly hintsEnabled: boolean;
 }
 
-export const DEFAULT_SETTINGS: PersistedSettings = { muted: false, reducedMotion: false };
+export const DEFAULT_SETTINGS: PersistedSettings = {
+  muted: false,
+  reducedMotion: false,
+  difficultyMode: 'competition',
+  hintsEnabled: true,
+};
 
 const STORAGE_PREFIX = 'scientist-santa-vs-superbugs';
 const BEST_SCORE_KEY = `${STORAGE_PREFIX}:best-score`;
@@ -75,6 +85,8 @@ export class SaveService {
       return {
         muted: typeof record.muted === 'boolean' ? record.muted : DEFAULT_SETTINGS.muted,
         reducedMotion: typeof record.reducedMotion === 'boolean' ? record.reducedMotion : DEFAULT_SETTINGS.reducedMotion,
+        difficultyMode: record.difficultyMode === 'training' ? 'training' : DEFAULT_SETTINGS.difficultyMode,
+        hintsEnabled: typeof record.hintsEnabled === 'boolean' ? record.hintsEnabled : DEFAULT_SETTINGS.hintsEnabled,
       };
     } catch {
       return DEFAULT_SETTINGS;

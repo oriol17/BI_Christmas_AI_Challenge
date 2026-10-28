@@ -85,6 +85,13 @@ export class GrumpusHeckler {
     this.scene.tweens.add({ targets: this.figure, scale: { from: 1.15, to: 1 }, duration: 300, ease: 'Back.easeOut' });
   }
 
+  warnTorpedo(): void {
+    this.forcedVisibleMs = 2200;
+    if (this.state === 'hidden' || this.state === 'leaving') this.enter(180);
+    this.setPose(TEXTURES.grumpus.throw, 1200);
+    this.say('Incoming virus torpedo!', 1500);
+  }
+
   say(text: string, durationMs = 1700): void {
     this.bubbleText.setText(text);
     const bg = this.bubble.list[0] as Phaser.GameObjects.Graphics;

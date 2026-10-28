@@ -79,8 +79,8 @@ describe('SaveService', () => {
     expect(save.getBestScore()).toBe(0);
     expect(save.submitScore(300)).toEqual({ best: 300, isNewBest: true });
     expect(save.getBestScore()).toBe(300);
-    save.saveSettings({ muted: true, reducedMotion: true });
-    expect(save.loadSettings()).toEqual({ muted: true, reducedMotion: true });
+    save.saveSettings({ muted: true, reducedMotion: true, difficultyMode: 'training', hintsEnabled: false });
+    expect(save.loadSettings()).toEqual({ muted: true, reducedMotion: true, difficultyMode: 'training', hintsEnabled: false });
   });
 
   it('ignores corrupted saved data', () => {
@@ -89,6 +89,13 @@ describe('SaveService', () => {
     storage.values.set('scientist-santa-vs-superbugs:settings', '{broken json');
     const save = new SaveService(storage);
     expect(save.getBestScore()).toBe(0);
-    expect(save.loadSettings()).toEqual({ muted: false, reducedMotion: false });
+    expect(save.loadSettings()).toEqual({ muted: false, reducedMotion: false, difficultyMode: 'competition', hintsEnabled: true });
+  });
+
+  it('migrates older settings to the Competition default with hints on', () => {
+    const storage = new FakeStorage();
+    storage.values.set('scientist-santa-vs-superbugs:settings', JSON.stringify({ muted: true, reducedMotion: false }));
+    const save = new SaveService(storage);
+    expect(save.loadSettings()).toEqual({ muted: true, reducedMotion: false, difficultyMode: 'competition', hintsEnabled: true });
   });
 });

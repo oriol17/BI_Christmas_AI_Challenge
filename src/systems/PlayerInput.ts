@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH } from '../config/layout';
 import type { PlayerIntent } from '../entities/Player';
 
-type KeyMap = Record<'space' | 'up' | 'w' | 'down' | 's', Phaser.Input.Keyboard.Key>;
+type KeyMap = Record<'space' | 'up' | 'w' | 'down' | 's' | 'h', Phaser.Input.Keyboard.Key>;
 
 /**
  * Translates keyboard (and optional touch) input into a PlayerIntent.
@@ -24,6 +24,7 @@ export class PlayerInput {
             w: Phaser.Input.Keyboard.KeyCodes.W,
             down: Phaser.Input.Keyboard.KeyCodes.DOWN,
             s: Phaser.Input.Keyboard.KeyCodes.S,
+            h: Phaser.Input.Keyboard.KeyCodes.H,
           },
           true,
         ) as KeyMap)
@@ -58,6 +59,7 @@ export class PlayerInput {
       jumpPressed,
       jumpHeld: this.touchJumpHeld || (keys !== null && (keys.space.isDown || keys.up.isDown || keys.w.isDown)),
       crouchHeld: this.touchCrouchHeld || (keys !== null && (keys.down.isDown || keys.s.isDown)),
+      hintsTogglePressed: keys !== null && justDown(keys.h),
     };
   }
 

@@ -42,6 +42,7 @@ const RUN_POSES: readonly StandingPose[] = [
 
 const JUMP_POSE: StandingPose = { legs: [38, 98, 62, 96, 10], arms: [32, 46, 76, 44], bob: -2, face: 'happy', hatSwing: 6 };
 const FALL_POSE: StandingPose = { legs: [42, 111, 58, 110, 0], arms: [24, 62, 78, 60], bob: 0, face: 'happy', hatSwing: -4 };
+const FAST_FALL_POSE: StandingPose = { legs: [38, 101, 62, 103, 8], arms: [26, 83, 78, 82], bob: 2, face: 'surprised', hatSwing: -8 };
 const HIT_POSE: StandingPose = { legs: [34, 109, 64, 108, 0], arms: [26, 56, 76, 54], bob: 0, face: 'surprised', hatSwing: -6 };
 
 function strokeFill(ctx: CanvasRenderingContext2D, fill: string, width = 2.5): void {
@@ -305,6 +306,7 @@ export function generateSantaTextures(textures: Phaser.Textures.TextureManager):
   });
   createCanvasTexture(textures, TEXTURES.santa.jump, width, height, (ctx) => drawStanding(ctx, JUMP_POSE));
   createCanvasTexture(textures, TEXTURES.santa.fall, width, height, (ctx) => drawStanding(ctx, FALL_POSE));
+  createCanvasTexture(textures, TEXTURES.santa.fastFall, width, height, (ctx) => drawStanding(ctx, FAST_FALL_POSE));
   createCanvasTexture(textures, TEXTURES.santa.hit, width, height, (ctx) => drawStanding(ctx, HIT_POSE));
   createCanvasTexture(textures, TEXTURES.santa.crouch, width, height, drawCrouch);
   createCanvasTexture(textures, TEXTURES.santa.defeat, width, height, drawDefeat);

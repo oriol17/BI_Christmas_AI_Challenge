@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { DEPTH, GAME_WIDTH, HAZARD_HITBOX_RADIUS, hazardLaneY, LAYOUT } from '../config/layout';
 import { TEXTURES } from '../graphics/textureKeys';
-import type { BacteriumType, HazardLane, Trajectory } from '../types/game';
+import type { BacteriumType, HazardLane, PlatformLevel, Trajectory } from '../types/game';
 import { clamp, lerp } from '../utils/math';
 
 /**
@@ -13,10 +13,13 @@ export class Bacterium extends Phaser.Physics.Arcade.Sprite {
   bacteriumType: BacteriumType = 'gramPositive';
   lane: HazardLane = 'ground';
   trajectory: Trajectory = 'straight';
+  platformLevel: PlatformLevel = 0;
   /** Set once Santa has interacted with it, so one bacterium is only resolved once. */
   resolved = false;
   /** Set when it first scrolls on screen (used for Grumpus throw animations). */
   announced = false;
+  warningAnnounced = false;
+  firstMdr = false;
   private laneY = 0;
   private ageSeconds = 0;
   private phase = 0;
@@ -26,15 +29,27 @@ export class Bacterium extends Phaser.Physics.Arcade.Sprite {
     super(scene, x, y, TEXTURES.bacteria.gramPositive);
   }
 
-  launch(type: BacteriumType, lane: HazardLane, trajectory: Trajectory, x: number, phase: number): void {
+  launch(
+    type: BacteriumType,
+    lane: HazardLane,
+    trajectory: Trajectory,
+    x: number,
+    phase: number,
+    firstMdr = false,
+    platformLevel: PlatformLevel = 0,
+    levelRisePixels = 0,
+  ): void {
     this.bacteriumType = type;
     this.lane = lane;
     this.trajectory = trajectory;
-    this.laneY = hazardLaneY(type, lane);
+    this.platformLevel = platformLevel;
+    this.laneY = hazardLaneY(type, lane) - platformLevel * levelRisePixels;
     this.ageSeconds = 0;
     this.phase = phase;
     this.resolved = false;
     this.announced = false;
+    this.warningAnnounced = false;
+    this.firstMdr = type === 'mdr' && firstMdr;
 
     this.setTexture(TEXTURES.bacteria[type]);
     this.enableBody(true, x, this.computeY(x), true, true);

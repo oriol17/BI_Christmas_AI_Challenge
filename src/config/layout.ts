@@ -29,6 +29,7 @@ export const PLAYER_FRAME = { width: 96, height: 112 } as const;
 export const PLAYER_BODY = {
   standing: { width: 40, height: 92 },
   crouching: { width: 50, height: 46 },
+  fastFalling: { width: 50, height: 74 },
 } as const;
 
 export const HAZARD_LANE_Y: Readonly<Record<HazardLane, number>> = {
@@ -53,9 +54,13 @@ export const HAZARD_HITBOX_RADIUS: Readonly<Record<BacteriumType, number>> = {
 export const COLLECTABLE_LANE_Y: Readonly<Record<CollectableLane, number>> = {
   run: 566,
   jump: 392,
+  crouch: 540,
 };
 
 export const COLLECTABLE_HITBOX_RADIUS = 18;
+
+/** Torpedo centre height above the surface of the platform level it targets. */
+export const TORPEDO_LANE_HEIGHT = { low: 38, mid: 82, high: 145 } as const;
 
 export function hazardLaneY(type: BacteriumType, lane: HazardLane): number {
   return type === 'mdr' ? MDR_LANE_Y[lane] : HAZARD_LANE_Y[lane];
@@ -69,6 +74,7 @@ export const DEPTH = {
   backgroundBenches: 10,
   grumpus: 15,
   floor: 18,
+  platforms: 28,
   deliveryStation: 22,
   collectables: 40,
   player: 50,

@@ -15,18 +15,21 @@ const CAUSE_TEXTURE: Record<DefeatCause, string> = {
   gramPositive: TEXTURES.bacteria.gramPositive,
   gramNegative: TEXTURES.bacteria.gramNegative,
   mdr: TEXTURES.bacteria.mdr,
+  virusTorpedo: TEXTURES.hazards.virusTorpedo,
 };
 
 const CAUSE_TIP: Record<DefeatCause, string> = {
   gramPositive: 'Tip: when your Gram+ slot shows EMPTY, jump or duck around round "+" clusters.',
   gramNegative: 'Tip: when your Gram− slot shows EMPTY, avoid the rod-shaped "−" bacteria.',
   mdr: 'Tip: MDR superbugs are announced with a red edge warning that says JUMP! or DUCK!',
+  virusTorpedo: 'Tip: virus torpedoes are always lethal. Jump, duck, or change levels; antibiotics never work.',
 };
 
 const CAUSE_COLOR: Record<DefeatCause, string> = {
   gramPositive: CSS_COLORS.gramPositive,
   gramNegative: CSS_COLORS.gramNegative,
   mdr: CSS_COLORS.mdrDanger,
+  virusTorpedo: CSS_COLORS.red,
 };
 
 const FALLBACK: GameOverData = {
@@ -73,7 +76,9 @@ export class GameOverScene extends Phaser.Scene {
 
     // Defeated Santa and the culprit
     this.add.image(300, 410, TEXTURES.santa.defeat).setScale(1.9);
-    const culprit = this.add.image(300 + 130, 380, CAUSE_TEXTURE[data.cause]).setScale(data.cause === 'mdr' ? 0.9 : 1.2);
+    const culprit = this.add.image(300 + 130, 380, CAUSE_TEXTURE[data.cause]).setScale(
+      data.cause === 'mdr' ? 0.9 : data.cause === 'virusTorpedo' ? 1 : 1.2,
+    );
     this.tweens.add({ targets: culprit, y: 366, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
 
     // Results
