@@ -107,12 +107,11 @@ describe('SpawnPlanner fairness', () => {
 
   it('inserts a configured breathing window after a short sequence of patterns', () => {
     const planner = new SpawnPlanner(DEFAULT_BALANCE, createSeededRandom(31));
-    let sixthChunk = planner.planChunk(20, { gramPositive: true, gramNegative: true });
-    for (let index = 1; index < DEFAULT_BALANCE.spawning.breathingWindowEveryChunks; index += 1) {
-      sixthChunk = planner.planChunk(20, { gramPositive: true, gramNegative: true });
+    for (let index = 0; index < DEFAULT_BALANCE.spawning.breathingWindowEveryChunks; index += 1) {
+      planner.planChunk(20, { gramPositive: true, gramNegative: true });
     }
-    sixthChunk = planner.planChunk(20, { gramPositive: true, gramNegative: true });
-    const firstHazard = sixthChunk.items.find(isHazard);
+    const breathingChunk = planner.planChunk(20, { gramPositive: true, gramNegative: true });
+    const firstHazard = breathingChunk.items.find(isHazard);
 
     expect(firstHazard?.time).toBeGreaterThanOrEqual(
       DEFAULT_BALANCE.spawning.breathingWindowDurationSeconds,
