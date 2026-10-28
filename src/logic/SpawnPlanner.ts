@@ -1,4 +1,4 @@
-import type { BalanceConfig } from '../config/balance';
+import type { BalanceConfig, ObstaclePatternId } from '../config/balance';
 import type {
   AntibioticType,
   BacteriumType,
@@ -38,6 +38,9 @@ export interface PlannedAntibiotic {
 export type PlannedCollectable = PlannedCookie | PlannedAntibiotic;
 export type PlannedItem = PlannedHazard | PlannedCollectable;
 
+/** Reusable patterns use lanes to communicate their intended action sequence. */
+export type PlannedPatternId = ObstaclePatternId | 'opening' | 'mdrSequence';
+
 /**
  * A group of items scheduled relative to the previous chunk's last hazard (time 0).
  * `duration` is the time of the chunk's last hazard, so chunks can be chained.
@@ -46,6 +49,7 @@ export interface PlannedChunk {
   readonly items: readonly PlannedItem[];
   readonly duration: number;
   readonly hasMdr: boolean;
+  readonly patternId: PlannedPatternId;
 }
 
 export const REQUIRED_ACTION: Readonly<Record<HazardLane, RequiredAction>> = {
@@ -56,29 +60,58 @@ export const REQUIRED_ACTION: Readonly<Record<HazardLane, RequiredAction>> = {
 
 const MDR_LANES: readonly HazardLane[] = ['ground', 'high'];
 const TREATABLE_TYPES: readonly TreatableBacteriumType[] = ['gramPositive', 'gramNegative'];
-/** Spacing of cookies inside a row (s). */
-const COOKIE_ROW_SPACING_SECONDS = 0.11;
-/** Jump-height pickups that are not above a ground hazard need a roomy gap. */
-const MIN_GAP_FOR_JUMP_PICKUP_SECONDS = 2.0;
 const EPSILON = 1e-6;
+
+interface PatternStep {
+  readonly lane: HazardLane;
+  readonly bacterium: TreatableBacteriumType | null;
+}
+
+const PATTERN_STEPS: Readonly<Record<ObstaclePatternId, readonly PatternStep[]>> = {
+  single: [{ lane: 'ground', bacterium: null }],
+  jumpThenCrouch: [
+    { lane: 'ground', bacterium: 'gramPositive' },
+    { lane: 'high', bacterium: 'gramNegative' },
+  ],
+  crouchThenJump: [
+    { lane: 'high', bacterium: 'gramNegative' },
+    { lane: 'ground', bacterium: 'gramPositive' },
+  ],
+  jumpThenStay: [
+    { lane: 'ground', bacterium: 'gramPositive' },
+    { lane: 'sky', bacterium: 'gramNegative' },
+  ],
+  stayThenCrouch: [
+    { lane: 'sky', bacterium: 'gramPositive' },
+    { lane: 'high', bacterium: 'gramNegative' },
+  ],
+  jumpCrouchJump: [
+    { lane: 'ground', bacterium: 'gramPositive' },
+    { lane: 'high', bacterium: 'gramNegative' },
+    { lane: 'ground', bacterium: 'gramPositive' },
+  ],
+  crouchJumpCrouch: [
+    { lane: 'high', bacterium: 'gramNegative' },
+    { lane: 'ground', bacterium: 'gramPositive' },
+    { lane: 'high', bacterium: 'gramNegative' },
+  ],
+};
 
 export function isHazard(item: PlannedItem): item is PlannedHazard {
   return item.kind === 'bacterium';
 }
 
 /**
- * Produces fair obstacle chunks. All rules that guarantee avoidability live here so they
- * can be verified by unit tests without Phaser:
- * - consecutive hazards are at least `minHazardGapSeconds` apart;
- * - MDR bacteria have `mdr.clearanceSeconds` of empty space before and after;
- * - collectables never overlap a hazard that would force a hit to collect them.
+ * Produces deliberate, reusable obstacle patterns. The earliest chunks teach both
+ * jump and crouch, while configurable unlocks and weights add lane changes and triples.
+ * The minimum reaction window and MDR clearances keep each sequence avoidable.
  */
 export class SpawnPlanner {
   private chunkCount = 0;
   private lastMdrDistance: number | null = null;
   private nextAntibioticDistance = 0;
-  /** Minimum leading gap the next chunk must respect (depends on what ended the previous chunk). */
   private requiredLeadingGap = 0;
+  private breathingWindowPending = false;
 
   constructor(
     private readonly balance: BalanceConfig,
@@ -91,40 +124,84 @@ export class SpawnPlanner {
     this.chunkCount = 0;
     this.lastMdrDistance = null;
     this.requiredLeadingGap = 0;
+    this.breathingWindowPending = false;
     this.nextAntibioticDistance = this.rollAntibioticInterval();
   }
 
   planChunk(distanceMeters: number, antibioticReadiness: Readonly<Record<AntibioticType, boolean>>): PlannedChunk {
     const { spawning, mdr } = this.balance;
     const difficulty = getDifficulty(distanceMeters, this.balance);
-    const isFirstChunk = this.chunkCount === 0;
+    const chunkIndex = this.chunkCount;
+    const isFirstChunk = chunkIndex === 0;
     this.chunkCount += 1;
 
     const jitter = 1 + spawning.spawnIntervalJitter * (this.rng() * 2 - 1);
-    let leadingGap = isFirstChunk ? spawning.firstHazardDelaySeconds : difficulty.spawnIntervalSeconds * jitter;
-    leadingGap = Math.max(leadingGap, spawning.minHazardGapSeconds, this.requiredLeadingGap);
+    let leadingGap = isFirstChunk
+      ? spawning.firstHazardDelaySeconds
+      : difficulty.spawnIntervalSeconds * jitter;
+    if (this.breathingWindowPending) {
+      leadingGap = Math.max(leadingGap, spawning.breathingWindowDurationSeconds);
+      this.breathingWindowPending = false;
+    }
+    leadingGap = Math.max(
+      leadingGap,
+      spawning.minimumReactionWindowSeconds,
+      this.requiredLeadingGap,
+    );
 
     const spawnMdr = !isFirstChunk && this.shouldSpawnMdr(distanceMeters, difficulty);
     const items: PlannedItem[] = [];
     let hazards: PlannedHazard[];
+    let patternId: PlannedPatternId;
 
     if (spawnMdr) {
-      leadingGap = Math.max(leadingGap, mdr.clearanceSeconds);
+      const mdrTime = leadingGap + Math.max(mdr.clearanceSeconds, spawning.minimumReactionWindowSeconds);
       hazards = [
-        { kind: 'bacterium', time: leadingGap, bacterium: 'mdr', lane: pickRandom(this.rng, MDR_LANES), trajectory: 'straight' },
+        {
+          kind: 'bacterium',
+          time: leadingGap,
+          bacterium: pickRandom(this.rng, TREATABLE_TYPES),
+          lane: pickRandom(this.rng, MDR_LANES),
+          trajectory: this.pickTrajectory(difficulty),
+        },
+        {
+          kind: 'bacterium',
+          time: mdrTime,
+          bacterium: 'mdr',
+          lane: pickRandom(this.rng, MDR_LANES),
+          trajectory: 'straight',
+        },
       ];
       this.lastMdrDistance = distanceMeters;
       this.requiredLeadingGap = mdr.clearanceSeconds;
+      patternId = 'mdrSequence';
     } else {
-      hazards = this.planTreatableHazards(leadingGap, difficulty);
-      this.requiredLeadingGap = spawning.minHazardGapSeconds;
+      let selectedPatternId: ObstaclePatternId | 'opening';
+      if (isFirstChunk) {
+        selectedPatternId = 'opening';
+      } else if (
+        chunkIndex === 1 &&
+        distanceMeters >= spawning.patternWeights.jumpThenCrouch.unlockDistance &&
+        difficulty.highLaneUnlocked &&
+        difficulty.doublePatternsUnlocked
+      ) {
+        selectedPatternId = 'jumpThenCrouch';
+      } else {
+        selectedPatternId = this.selectPattern(distanceMeters, difficulty);
+      }
+      patternId = selectedPatternId;
+      hazards = this.planTreatableHazards(selectedPatternId, leadingGap, difficulty);
+      this.requiredLeadingGap = spawning.minimumReactionWindowSeconds;
     }
     items.push(...hazards);
 
     let leadingSlotUsed = false;
     if (distanceMeters >= this.nextAntibioticDistance) {
-      items.push(this.planAntibiotic(leadingGap, antibioticReadiness));
-      leadingSlotUsed = true;
+      const antibiotic = this.planAntibiotic(hazards, leadingGap, antibioticReadiness);
+      if (antibiotic) {
+        items.push(antibiotic);
+        leadingSlotUsed = true;
+      }
       this.nextAntibioticDistance = distanceMeters + this.rollAntibioticInterval();
     }
 
@@ -133,77 +210,133 @@ export class SpawnPlanner {
     }
 
     const duration = hazards.reduce((max, hazard) => Math.max(max, hazard.time), leadingGap);
-    return { items: items.sort((a, b) => a.time - b.time), duration, hasMdr: spawnMdr };
+    const breathingFrequency = Math.max(1, spawning.breathingWindowEveryChunks);
+    this.breathingWindowPending = this.chunkCount % breathingFrequency === 0;
+    return { items: items.sort((a, b) => a.time - b.time), duration, hasMdr: spawnMdr, patternId };
   }
 
   private shouldSpawnMdr(distanceMeters: number, difficulty: DifficultySnapshot): boolean {
     if (!difficulty.mdrUnlocked) return false;
-    if (this.lastMdrDistance !== null && distanceMeters - this.lastMdrDistance < this.balance.mdr.minSpacingMeters) {
-      return false;
-    }
+    if (this.lastMdrDistance === null) return true;
+    if (distanceMeters - this.lastMdrDistance < this.balance.mdr.minSpacingMeters) return false;
     return this.rng() < difficulty.mdrProbability;
   }
 
-  private planTreatableHazards(leadingGap: number, difficulty: DifficultySnapshot): PlannedHazard[] {
-    const count = pickWeighted(this.rng, [
-      { value: 1, weight: 1 },
-      { value: 2, weight: difficulty.doublePatternsUnlocked ? 0.3 + 0.5 * difficulty.level : 0 },
-      { value: 3, weight: difficulty.triplePatternsUnlocked ? 0.15 + 0.25 * difficulty.level : 0 },
-    ]);
+  private selectPattern(distanceMeters: number, difficulty: DifficultySnapshot): ObstaclePatternId {
+    const availableLanes: HazardLane[] = ['ground'];
+    if (difficulty.highLaneUnlocked) availableLanes.push('high');
+    if (difficulty.skyLaneUnlocked) availableLanes.push('sky');
 
+    const candidates = (Object.keys(PATTERN_STEPS) as ObstaclePatternId[])
+      .filter((id) => {
+        const config = this.balance.spawning.patternWeights[id];
+        const steps = PATTERN_STEPS[id];
+        return (
+          distanceMeters >= config.unlockDistance &&
+          steps.every((step) => availableLanes.includes(step.lane)) &&
+          (steps.length === 1 || difficulty.doublePatternsUnlocked) &&
+          (steps.length < 3 || difficulty.triplePatternsUnlocked)
+        );
+      })
+      .map((id) => {
+        const config = this.balance.spawning.patternWeights[id];
+        return { value: id, weight: lerp(config.initialWeight, config.maxWeight, difficulty.level) };
+      });
+
+    return pickWeighted(this.rng, candidates);
+  }
+
+  private planTreatableHazards(
+    patternId: ObstaclePatternId | 'opening',
+    leadingGap: number,
+    difficulty: DifficultySnapshot,
+  ): PlannedHazard[] {
+    if (patternId === 'opening') {
+      return [
+        {
+          kind: 'bacterium',
+          time: leadingGap,
+          bacterium: pickRandom(this.rng, TREATABLE_TYPES),
+          lane: 'ground',
+          trajectory: this.pickTrajectory(difficulty),
+        },
+      ];
+    }
+
+    const steps = PATTERN_STEPS[patternId];
     const lanes: HazardLane[] = ['ground'];
     if (difficulty.highLaneUnlocked) lanes.push('high');
     if (difficulty.skyLaneUnlocked) lanes.push('sky');
+    const gap = Math.max(
+      this.balance.spawning.minimumReactionWindowSeconds,
+      lerp(this.balance.spawning.initialPatternGapSeconds, this.balance.spawning.minimumReactionWindowSeconds, difficulty.level) +
+        (this.rng() * 2 - 1) * this.balance.spawning.patternGapJitterSeconds,
+    );
 
-    const hazards: PlannedHazard[] = [];
-    let time = leadingGap;
-    for (let index = 0; index < count; index += 1) {
-      if (index > 0) {
-        const comfort = lerp(1.45, 1.0, difficulty.level);
-        time += this.balance.spawning.minHazardGapSeconds * comfort + this.rng() * 0.25;
-      }
-      hazards.push({
-        kind: 'bacterium',
-        time,
-        bacterium: pickRandom(this.rng, TREATABLE_TYPES),
-        lane: pickRandom(this.rng, lanes),
-        trajectory: this.pickTrajectory(difficulty),
-      });
-    }
-    return hazards;
+    return steps.map((step, index) => ({
+      kind: 'bacterium',
+      time: leadingGap + index * gap,
+      bacterium: step.bacterium ?? pickRandom(this.rng, TREATABLE_TYPES),
+      lane: patternId === 'single' ? pickRandom(this.rng, lanes) : step.lane,
+      trajectory: this.pickTrajectory(difficulty),
+    }));
   }
 
   private pickTrajectory(difficulty: DifficultySnapshot): Trajectory {
+    const weights = this.balance.spawning.trajectoryWeights;
     return pickWeighted(this.rng, [
-      { value: 'straight' as const, weight: 1 },
-      { value: 'bob' as const, weight: 0.45 },
-      { value: 'lob' as const, weight: difficulty.lobUnlocked ? 0.4 : 0 },
+      { value: 'straight' as const, weight: weights.straight },
+      { value: 'bob' as const, weight: weights.bob },
+      { value: 'lob' as const, weight: difficulty.lobUnlocked ? weights.lob : 0 },
     ]);
   }
 
   private planAntibiotic(
+    hazards: readonly PlannedHazard[],
     leadingGap: number,
     readiness: Readonly<Record<AntibioticType, boolean>>,
-  ): PlannedAntibiotic {
+  ): PlannedAntibiotic | null {
     const missing = ANTIBIOTIC_TYPES.filter((type) => !readiness[type]);
     const antibiotic =
       missing.length > 0 && this.rng() < this.balance.antibiotics.preferMissingChance
         ? pickRandom(this.rng, missing)
         : pickRandom(this.rng, ANTIBIOTIC_TYPES);
-    const lane: CollectableLane =
-      leadingGap >= MIN_GAP_FOR_JUMP_PICKUP_SECONDS && this.rng() < 0.3 ? 'jump' : 'run';
-    return { kind: 'antibiotic', time: leadingGap / 2, lane, antibiotic };
+    const groundHazard = hazards.find((hazard) => hazard.lane === 'ground');
+    const candidates: PlannedAntibiotic[] = [];
+    if (groundHazard && this.rng() < this.balance.antibiotics.riskPlacementChance) {
+      candidates.push({
+        kind: 'antibiotic',
+        time: groundHazard.time - this.balance.antibiotics.riskOffsetSeconds,
+        lane: 'jump',
+        antibiotic,
+      });
+    }
+    candidates.push({ kind: 'antibiotic', time: leadingGap / 2, lane: 'run', antibiotic });
+    if (leadingGap >= this.balance.antibiotics.jumpPickupMinGapSeconds) {
+      candidates.push({ kind: 'antibiotic', time: leadingGap / 2, lane: 'jump', antibiotic });
+    }
+
+    return candidates.find(
+      (candidate) =>
+        candidate.time >= this.balance.spawning.collectableClearanceSeconds &&
+        hazards.every((hazard) =>
+          !collectableConflictsWithHazard(candidate, hazard, this.balance.spawning.collectableClearanceSeconds),
+        ),
+    ) ?? null;
   }
 
   private planCookies(hazards: readonly PlannedHazard[], leadingGap: number, leadingSlotUsed: boolean): PlannedCookie[] {
     const groundHazards = hazards.filter((hazard) => hazard.lane === 'ground');
     const rowLength = randomInt(this.rng, 1, Math.max(1, this.balance.cookies.maxRowLength));
-    const useArc = groundHazards.length > 0 && (leadingSlotUsed || this.rng() < 0.55);
+    const useArc =
+      groundHazards.length > 0 && (leadingSlotUsed || this.rng() < this.balance.cookies.jumpArcChance);
 
     let candidates: PlannedCookie[];
     if (useArc) {
       const target = pickRandom(this.rng, groundHazards);
-      candidates = this.makeRow(target.time, rowLength, 'jump');
+      const riskOffset =
+        this.rng() < this.balance.cookies.riskPlacementChance ? this.balance.cookies.riskOffsetSeconds : 0;
+      candidates = this.makeRow(target.time - riskOffset, rowLength, 'jump');
     } else if (!leadingSlotUsed) {
       candidates = this.makeRow(leadingGap / 2, rowLength, 'run');
     } else {
@@ -223,7 +356,7 @@ export class SpawnPlanner {
   private makeRow(centerTime: number, length: number, lane: CollectableLane): PlannedCookie[] {
     const cookies: PlannedCookie[] = [];
     for (let index = 0; index < length; index += 1) {
-      const offset = (index - (length - 1) / 2) * COOKIE_ROW_SPACING_SECONDS;
+      const offset = (index - (length - 1) / 2) * this.balance.cookies.rowSpacingSeconds;
       cookies.push({ kind: 'cookie', time: centerTime + offset, lane });
     }
     return cookies;
@@ -270,7 +403,7 @@ export function findTimelineViolations(items: readonly PlannedItem[], balance: B
     const current = hazards[index]!;
     const gap = current.time - previous.time;
     const involvesMdr = previous.bacterium === 'mdr' || current.bacterium === 'mdr';
-    const required = involvesMdr ? balance.mdr.clearanceSeconds : balance.spawning.minHazardGapSeconds;
+    const required = involvesMdr ? balance.mdr.clearanceSeconds : balance.spawning.minimumReactionWindowSeconds;
     if (gap < required - EPSILON) {
       violations.push({ time: current.time, reason: `Hazard gap ${gap.toFixed(3)}s < ${required}s` });
     }

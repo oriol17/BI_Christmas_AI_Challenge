@@ -58,7 +58,7 @@ describe('SpawnPlanner fairness', () => {
     }
   });
 
-  it('keeps MDR locked until the configured distance and makes it rare', () => {
+  it('introduces the first MDR at the configured distance and keeps it uncommon', () => {
     let totalMdr = 0;
     let totalHazards = 0;
     for (let seed = 1; seed <= 40; seed += 1) {
@@ -73,7 +73,71 @@ describe('SpawnPlanner fairness', () => {
     expect(totalMdr / totalHazards).toBeLessThan(0.12);
   });
 
-  it('only uses ground lane hazards during the opening tutorial stretch', () => {
+  it('introduces both jump and crouch in a deliberate early pattern', () => {
+    const planner = new SpawnPlanner(DEFAULT_BALANCE, createSeededRandom(17));
+    const opening = planner.planChunk(0, { gramPositive: true, gramNegative: true });
+    const earlyPattern = planner.planChunk(20, { gramPositive: true, gramNegative: true });
+    const openingHazards = opening.items.filter(isHazard);
+    const earlyHazards = earlyPattern.items.filter(isHazard);
+
+    expect(opening.patternId).toBe('opening');
+    expect(openingHazards.map((hazard) => hazard.lane)).toEqual(['ground']);
+    expect(earlyPattern.patternId).toBe('jumpThenCrouch');
+    expect(earlyHazards.map((hazard) => [hazard.lane, hazard.bacterium])).toEqual([
+      ['ground', 'gramPositive'],
+      ['high', 'gramNegative'],
+    ]);
+    expect(earlyHazards[1]!.time - earlyHazards[0]!.time).toBeGreaterThanOrEqual(
+      DEFAULT_BALANCE.spawning.minimumReactionWindowSeconds,
+    );
+  });
+
+  it('unlocks reusable mixed-action and triple patterns with distance', () => {
+    const planner = new SpawnPlanner(DEFAULT_BALANCE, createSeededRandom(29));
+    const seen = new Set<string>();
+    for (let index = 0; index < 120; index += 1) {
+      seen.add(planner.planChunk(5000, { gramPositive: true, gramNegative: true }).patternId);
+    }
+
+    expect(seen).toContain('jumpThenStay');
+    expect(seen).toContain('stayThenCrouch');
+    expect(seen).toContain('jumpCrouchJump');
+    expect(seen).toContain('crouchJumpCrouch');
+  });
+
+  it('inserts a configured breathing window after a short sequence of patterns', () => {
+    const planner = new SpawnPlanner(DEFAULT_BALANCE, createSeededRandom(31));
+    let sixthChunk = planner.planChunk(20, { gramPositive: true, gramNegative: true });
+    for (let index = 1; index < DEFAULT_BALANCE.spawning.breathingWindowEveryChunks; index += 1) {
+      sixthChunk = planner.planChunk(20, { gramPositive: true, gramNegative: true });
+    }
+    sixthChunk = planner.planChunk(20, { gramPositive: true, gramNegative: true });
+    const firstHazard = sixthChunk.items.find(isHazard);
+
+    expect(firstHazard?.time).toBeGreaterThanOrEqual(
+      DEFAULT_BALANCE.spawning.breathingWindowDurationSeconds,
+    );
+  });
+
+  it('pairs an early MDR warning with a preceding dodgeable bacterium', () => {
+    const planner = new SpawnPlanner(DEFAULT_BALANCE, createSeededRandom(18));
+    planner.planChunk(0, { gramPositive: true, gramNegative: true });
+    const mdrChunk = planner.planChunk(DEFAULT_BALANCE.mdr.unlockDistance, {
+      gramPositive: true,
+      gramNegative: true,
+    });
+    const hazards = mdrChunk.items.filter(isHazard);
+
+    expect(mdrChunk.patternId).toBe('mdrSequence');
+    expect(hazards.map((hazard) => hazard.bacterium)).toContain('mdr');
+    expect(hazards[0]!.bacterium).not.toBe('mdr');
+    expect(hazards[1]!.time - hazards[0]!.time).toBeGreaterThanOrEqual(
+      DEFAULT_BALANCE.mdr.clearanceSeconds,
+    );
+    expect(hazards.every((hazard) => hazard.lane !== 'sky')).toBe(true);
+  });
+
+  it('only uses ground lane hazards before the head-height lane unlocks', () => {
     const planner = new SpawnPlanner(DEFAULT_BALANCE, createSeededRandom(7));
     for (let index = 0; index < 50; index += 1) {
       const chunk = planner.planChunk(DEFAULT_BALANCE.spawning.unlocks.highLane - 1, {
@@ -115,7 +179,7 @@ describe('findTimelineViolations', () => {
     const violations = findTimelineViolations(
       [
         { kind: 'bacterium', time: 1, bacterium: 'gramPositive', lane: 'ground', trajectory: 'straight' },
-        { kind: 'bacterium', time: 1.2, bacterium: 'gramNegative', lane: 'high', trajectory: 'straight' },
+        { kind: 'bacterium', time: 1.1, bacterium: 'gramNegative', lane: 'high', trajectory: 'straight' },
       ],
       DEFAULT_BALANCE,
     );

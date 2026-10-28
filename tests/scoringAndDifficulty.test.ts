@@ -92,6 +92,7 @@ describe('RunState', () => {
 describe('difficulty', () => {
   it('starts at the initial speed and clamps at the maximum', () => {
     expect(getWorldSpeed(0, DEFAULT_BALANCE)).toBe(DEFAULT_BALANCE.world.initialWorldSpeed);
+    expect(getWorldSpeed(1100, DEFAULT_BALANCE)).toBe(DEFAULT_BALANCE.world.maxWorldSpeed);
     expect(getWorldSpeed(1_000_000, DEFAULT_BALANCE)).toBe(DEFAULT_BALANCE.world.maxWorldSpeed);
     expect(getWorldSpeed(-100, DEFAULT_BALANCE)).toBe(DEFAULT_BALANCE.world.initialWorldSpeed);
   });
@@ -119,6 +120,7 @@ describe('difficulty', () => {
     const later = getDifficulty(DEFAULT_BALANCE.mdr.unlockDistance, DEFAULT_BALANCE);
     expect(later.mdrUnlocked).toBe(true);
     expect(later.mdrProbability).toBeGreaterThan(0);
+    expect(getDifficulty(2000, DEFAULT_BALANCE).mdrProbability).toBeGreaterThan(later.mdrProbability);
   });
 
   it('introduces obstacle features progressively', () => {
@@ -126,5 +128,12 @@ describe('difficulty', () => {
     expect(start.highLaneUnlocked || start.skyLaneUnlocked || start.doublePatternsUnlocked).toBe(false);
     const late = getDifficulty(5000, DEFAULT_BALANCE);
     expect(late.highLaneUnlocked && late.skyLaneUnlocked && late.doublePatternsUnlocked && late.triplePatternsUnlocked).toBe(true);
+  });
+
+  it('starts with an engaging spawn interval instead of a long warm-up', () => {
+    expect(getDifficulty(0, DEFAULT_BALANCE).spawnIntervalSeconds).toBe(
+      DEFAULT_BALANCE.spawning.initialSpawnIntervalSeconds,
+    );
+    expect(DEFAULT_BALANCE.spawning.firstHazardDelaySeconds).toBeLessThan(1.5);
   });
 });

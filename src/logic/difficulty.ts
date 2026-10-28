@@ -29,8 +29,8 @@ export function getDifficulty(distanceMeters: number, balance: BalanceConfig): D
   const { spawning, mdr } = balance;
 
   const spawnIntervalSeconds = Math.max(
-    spawning.minHazardGapSeconds,
-    lerp(spawning.maxSpawnIntervalSeconds, spawning.minSpawnIntervalSeconds, level),
+    spawning.minimumReactionWindowSeconds,
+    lerp(spawning.initialSpawnIntervalSeconds, spawning.minSpawnIntervalSeconds, level),
   );
 
   const mdrUnlocked = distance >= mdr.unlockDistance;

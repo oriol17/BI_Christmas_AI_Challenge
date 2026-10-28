@@ -31,6 +31,7 @@ A polished 2D Christmas endless runner for the **BI Christmas AI Challenge**. It
 - Santa **runs automatically** from left to right while the laboratory scrolls past in layered parallax: snowy windows, bioreactors, incubators, glassware, monitors, Christmas trees, garlands and gift piles.
 - The **Grumpus** appears from time to time on a hover platform in the background, throws bacteria, taunts Santa and gives a loud warning before releasing an MDR superbug. You never fight him directly.
 - **Jump**, **duck** or simply **keep running** to dodge bacteria. Every obstacle sequence can be avoided, and the spawn rules guarantee it (see [Testing](#testing-and-quality-checks)).
+- The first threat arrives quickly, followed by an early **jump → duck** sequence. More varied patterns and MDR encounters unlock during the opening stretch rather than several minutes into a run.
 - Collect **gingerbread cookies** for bonus points and **antibiotic pickups** to refill empty slots.
 - Every **500 m**, Santa passes a *Present Dispatch* station and automatically delivers a present (+500 points, confetti, no interruption).
 - Difficulty rises gradually with distance (speed, spawn rate, pattern complexity and rare MDR events) up to a configured cap.
@@ -245,17 +246,19 @@ All tuning values live in **`src/config/balance.ts`** (`DEFAULT_BALANCE`), with 
 | --- | --- |
 | Player | `gravity`, `jumpVelocity`, `jumpCutVelocity`, `coyoteTimeMs`, `jumpBufferMs`, `crouchDurationMs`, `fastFallVelocity`, `allowAirJump` |
 | World | `pixelsPerMeter`, `initialWorldSpeed`, `maxWorldSpeed`, `speedIncreasePerMeter` |
-| Spawning | `maxSpawnIntervalSeconds`, `minSpawnIntervalSeconds`, `spawnIntervalJitter`, `minHazardGapSeconds`, `firstHazardDelaySeconds`, `collectableClearanceSeconds`, feature `unlocks` (head-height lane, high lane, lobbed bacteria, double/triple patterns) |
+| Spawning | `initialSpawnIntervalSeconds`, `minSpawnIntervalSeconds`, `spawnIntervalJitter`, `minimumReactionWindowSeconds`, pattern gap/jitter and trajectory weights, `firstHazardDelaySeconds`, breathing-window frequency/duration, pattern unlock distances and weights |
 | MDR | `unlockDistance`, `baseProbability`, `maxProbability`, `minSpacingMeters`, `clearanceSeconds`, `warningSeconds` |
-| Antibiotics | `capacity`, `startingInventory`, `pickupIntervalMinMeters`, `pickupIntervalMaxMeters`, `preferMissingChance` |
-| Cookies | `chancePerPattern`, `score`, `maxRowLength` |
+| Antibiotics | `capacity`, `startingInventory`, pickup interval range, risky-placement chance/offset, `jumpPickupMinGapSeconds`, `preferMissingChance` |
+| Cookies | `chancePerPattern`, risky-placement chance/offset, jump-arc chance and row spacing, `score`, `maxRowLength` |
 | Scoring / deliveries | `pointsPerMeter`, `deliveries.intervalMeters`, `deliveries.score` |
 | Collision / effects | `invulnerabilityMs`, `screenShakeIntensity`, `screenShakeDurationMs` |
 
 Tips:
 
-- Speed is clamped to `maxWorldSpeed`, which also caps the difficulty `level` (0–1) that drives spawn intervals and MDR probability.
-- Keep `minHazardGapSeconds` above the jump air time (≈ `2 × jumpVelocity / gravity`, about 0.79 s by default) so back-to-back obstacles stay fair. Run `npm test` after tuning: the fairness tests simulate thousands of patterns.
+- Speed is clamped to `maxWorldSpeed`, which also caps the difficulty `level` (0–1) that drives spawn intervals, pattern weights and MDR probability.
+- `patternWeights` controls how often each reusable pattern is selected. Keep `minimumReactionWindowSeconds` large enough for Santa to land or change stance between hazards; MDR sequences use the larger `mdr.clearanceSeconds`.
+- Cookies and some antibiotic pickups can use the configured risky jump arc before a ground hazard; the planner filters all placements through its collectable-clearance rules.
+- Run `npm test` after tuning: seeded fairness tests exercise thousands of metres of generated patterns.
 - Lane heights in `layout.ts` were derived from the jump arc and hitboxes. If you change `gravity` or `jumpVelocity` significantly, re-check that the high lane is still reachable by a jump.
 
 ## Testing and quality checks
